@@ -320,11 +320,39 @@
       }
 
       function updateAreaInfo() {
-        if (!userPosition) {
-          $("areaInfo").textContent =
-            "Aguardando localização do aparelho.";
-          return;
-        }
+  const info = document.getElementById("areaInfo");
+
+  if (!userPosition) {
+    info.textContent = "Aguardando localização.";
+    return;
+  }
+
+  const area = findArea(userPosition);
+
+  if (!area) {
+    info.textContent = "Nenhuma área cadastrada identificada.";
+    previousAreaId = null;
+    return;
+  }
+
+  info.textContent =
+    "Área: " + area.name +
+    " | Delegacia: " + (area.station || "Não cadastrada") +
+    " | Hospital: " + (area.hospital || "Não cadastrado");
+
+  if (previousAreaId !== area.id) {
+    previousAreaId = area.id;
+
+    if ("Notification" in window &&
+        Notification.permission === "granted") {
+      new Notification("PATRULHAMENTO TÁTICO", {
+        body: "Você entrou na área: " + area.name
+      });
+    } else {
+      alert("Você entrou na área: " + area.name);
+    }
+  }
+}
 
         const area = findArea(userPosition);
 
