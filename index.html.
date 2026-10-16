@@ -1,0 +1,687 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="theme-color" content="#17251c">
+<title>PATRULHAMENTO TÁTICO</title>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css">
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #101712;
+  color: white;
+  font-family: Arial, sans-serif;
+}
+
+header {
+  background: #1c3023;
+  padding: 18px 12px;
+  text-align: center;
+  border-bottom: 2px solid #7b995b;
+}
+
+header h1 { margin: 0; font-size: 21px; }
+header p { font-size: 12px; color: #ccd7cc; }
+
+main { padding: 12px; }
+
+#map {
+  width: 100%;
+  height: 48vh;
+  min-height: 320px;
+  background: #e5e7eb;
+  border-radius: 10px;
+  z-index: 1;
+}
+
+.panel {
+  background: #1b2720;
+  padding: 14px;
+  margin-top: 12px;
+  border-radius: 10px;
+}
+
+h2 { font-size: 16px; margin-top: 0; }
+
+.status {
+  background: #29382e;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+label {
+  display: block;
+  margin: 12px 0 5px;
+  font-size: 13px;
+}
+
+input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #536558;
+  border-radius: 7px;
+  background: #111a14;
+  color: white;
+  font-size: 16px;
+}
+
+button {
+  width: 100%;
+  margin-top: 9px;
+  padding: 13px 8px;
+  background: #496d48;
+  border: 0;
+  border-radius: 7px;
+  color: white;
+  font-size: 15px;
+  font-weight: bold;
+}
+
+button.secondary { background: #394b3e; }
+button.danger { background: #713c36; }
+button:disabled { opacity: 0.45; }
+
+.small {
+  font-size: 12px;
+  color: #c1cec4;
+  line-height: 1.5;
+}
+
+.area-item {
+  padding: 12px 0;
+  border-bottom: 1px solid #425047;
+  overflow-wrap: anywhere;
+}
+
+footer {
+  text-align: center;
+  color: #aab7ac;
+  padding: 18px;
+  font-size: 11px;
+}
+</style>
+</head>
+
+<body>
+<header>
+  <h1>PATRULHAMENTO TÁTICO</h1>
+  <p>Localização e identificação de áreas</p>
+</header>
+
+<main>
+  <div id="map"></div>
+
+  <section class="panel">
+    <h2>Localização</h2>
+    <div id="status" class="status">
+      Toque em localizar para iniciar.
+    </div>
+    <button id="locateBtn">📍 Localizar agora</button>
+    <button id="startBtn">Iniciar acompanhamento</button>
+    <button id="stopBtn" class="secondary">Parar acompanhamento</button>
+    <button id="notifyBtn" class="secondary">Ativar notificações disponíveis</button>
+    <p class="small">
+      Mantenha a página aberta durante o acompanhamento.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Cadastrar área</h2>
+    <label for="areaName">Nome da área</label>
+    <input id="areaName" placeholder="Ex.: Área Alfa">
+
+    <label for="station">Delegacia responsável</label>
+    <input id="station" placeholder="Nome da delegacia">
+
+    <label for="hospital">Hospital de referência</label>
+    <input id="hospital" placeholder="Nome do hospital">
+
+    <button id="drawBtn">Desenhar área no mapa</button>
+    <button id="finishBtn" disabled>Finalizar e salvar área</button>
+    <button id="cancelBtn" class="danger" disabled>Cancelar desenho</button>
+    <p id="drawStatus" class="small">
+      Toque em desenhar e marque pelo menos três pontos no mapa.
+    </p>
+  </section>
+
+  <section class="panel">
+    <h2>Área identificada</h2>
+    <div id="areaInfo" class="status">
+      Aguardando localização.
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Áreas cadastradas</h2>
+    <div id="areaList">Nenhuma área cadastrada.</div>
+    <button id="exportBtn" class="secondary">Exportar áreas</button>
+    <button id="importBtn" class="secondary">Importar áreas</button>
+    <input id="importFile" type="file" accept=".json,application/json" hidden>
+  </section>
+</main>
+
+<footer>PATRULHAMENTO TÁTICO • Versão de teste</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+(() => {
+  "use strict";
+
+  const $ = id => document.getElementById(id);
+
+  const map = L.map("map").setView([-23.5505, -46.6333], 12);
+
+  L.tileLayer(
+    "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap"
+    }
+  ).addTo(map);
+
+  let userMarker = null;
+  let accuracyCircle = null;
+  let watchId = null;
+  let drawing = false;
+  let points = [];
+  let pointMarkers = [];
+  let draftLine = null;
+  let userPosition = null;
+  let previousAreaId = undefined;
+  let alertBusy = false;
+
+  let areas = [];
+  let areaLayers = {};
+
+  try {
+    const saved = localStorage.getItem("pt_areas_v1");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) areas = parsed;
+    }
+  } catch (e) {
+    console.warn("Não foi possível carregar áreas salvas.", e);
+  }
+
+  function saveAreas() {
+    try {
+      localStorage.setItem("pt_areas_v1", JSON.stringify(areas));
+      return true;
+    } catch (e) {
+      alert("Não foi possível salvar as áreas neste navegador.");
+      return false;
+    }
+  }
+
+  function insidePolygon(point, polygon) {
+    const x = point[1];
+    const y = point[0];
+    let inside = false;
+
+    for (let i = 0, j = polygon.length - 1;
+         i < polygon.length; j = i++) {
+      const xi = polygon[i][1];
+      const yi = polygon[i][0];
+      const xj = polygon[j][1];
+      const yj = polygon[j][0];
+
+      const cross =
+        ((yi > y) !== (yj > y)) &&
+        (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-12) + xi);
+
+      if (cross) inside = !inside;
+    }
+
+    return inside;
+  }
+
+  function findArea(position) {
+    return areas.find(a =>
+      a.points &&
+      a.points.length >= 3 &&
+      insidePolygon(position, a.points)
+    ) || null;
+  }
+
+  function notifyEntry(area) {
+    const message = "Você entrou na área: " + area.name;
+
+    if ("Notification" in window &&
+        Notification.permission === "granted") {
+      try {
+        new Notification("PATRULHAMENTO TÁTICO", {
+          body: message
+        });
+      } catch (e) {
+        alert(message);
+      }
+    } else {
+      alert(message);
+    }
+  }
+
+  function updateAreaInfo() {
+    if (!userPosition) {
+      $("areaInfo").textContent = "Aguardando localização.";
+      return;
+    }
+
+    const area = findArea(userPosition);
+
+    if (!area) {
+      $("areaInfo").textContent =
+        "Nenhuma área cadastrada corresponde à localização atual.";
+
+      previousAreaId = null;
+      return;
+    }
+
+    $("areaInfo").textContent =
+      "Área: " + area.name +
+      "\nDelegacia: " + (area.station || "Não cadastrada") +
+      "\nHospital: " + (area.hospital || "Não cadastrado");
+
+    if (previousAreaId === undefined) {
+      // A primeira posição serve como referência.
+      // Não gera alerta só por abrir o aplicativo dentro da área.
+      previousAreaId = area.id;
+      return;
+    }
+
+    if (previousAreaId !== area.id) {
+      previousAreaId = area.id;
+
+      if (!alertBusy) {
+        alertBusy = true;
+        notifyEntry(area);
+        setTimeout(() => { alertBusy = false; }, 1500);
+      }
+    }
+  }
+
+  function positionSuccess(pos) {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    userPosition = [lat, lng];
+
+    if (!userMarker) {
+      userMarker = L.marker(userPosition)
+        .addTo(map)
+        .bindPopup("Sua localização");
+    } else {
+      userMarker.setLatLng(userPosition);
+    }
+
+    if (!accuracyCircle) {
+      accuracyCircle = L.circle(userPosition, {
+        radius: pos.coords.accuracy,
+        color: "#2588ff",
+        fillOpacity: 0.1
+      }).addTo(map);
+    } else {
+      accuracyCircle.setLatLng(userPosition);
+      accuracyCircle.setRadius(pos.coords.accuracy);
+    }
+
+    $("status").textContent =
+      "Latitude: " + lat.toFixed(6) +
+      "\nLongitude: " + lng.toFixed(6) +
+      "\nPrecisão aproximada: " +
+      Math.round(pos.coords.accuracy) + " metros";
+
+    updateAreaInfo();
+  }
+
+  function positionError(err) {
+    const messages = {
+      1: "Permissão de localização negada. Confira os ajustes do Safari.",
+      2: "Não foi possível obter a localização.",
+      3: "Tempo esgotado ao tentar localizar."
+    };
+
+    $("status").textContent =
+      messages[err.code] || "Erro ao obter localização.";
+  }
+
+  function locate() {
+    if (!navigator.geolocation) {
+      $("status").textContent =
+        "Este navegador não oferece geolocalização.";
+      return;
+    }
+
+    $("status").textContent = "Obtendo localização...";
+
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        positionSuccess(pos);
+        map.setView(
+          [pos.coords.latitude, pos.coords.longitude], 16
+        );
+      },
+      positionError,
+      {
+        enableHighAccuracy: true,
+        timeout: 20000,
+        maximumAge: 0
+      }
+    );
+  }
+
+  function startTracking() {
+    if (!navigator.geolocation) {
+      $("status").textContent = "Geolocalização indisponível.";
+      return;
+    }
+
+    if (watchId !== null) return;
+
+    watchId = navigator.geolocation.watchPosition(
+      positionSuccess,
+      positionError,
+      {
+        enableHighAccuracy: true,
+        maximumAge: 3000,
+        timeout: 20000
+      }
+    );
+
+    $("status").textContent =
+      "Acompanhamento iniciado. Mantenha a página aberta.";
+  }
+
+  function stopTracking() {
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+    }
+    $("status").textContent = "Acompanhamento interrompido.";
+  }
+
+  function clearDraft() {
+    pointMarkers.forEach(m => map.removeLayer(m));
+    pointMarkers = [];
+    if (draftLine) map.removeLayer(draftLine);
+    draftLine = null;
+    points = [];
+  }
+
+  function setDrawing(value) {
+    drawing = value;
+    $("drawBtn").disabled = value;
+    $("finishBtn").disabled = !value;
+    $("cancelBtn").disabled = !value;
+    $("drawStatus").textContent = value
+      ? "Toque no mapa para marcar os limites da área."
+      : "Nenhuma área sendo desenhada.";
+  }
+
+  $("drawBtn").addEventListener("click", () => {
+    clearDraft();
+    setDrawing(true);
+  });
+
+  map.on("click", event => {
+    if (!drawing) return;
+
+    points.push([event.latlng.lat, event.latlng.lng]);
+
+    pointMarkers.push(
+      L.circleMarker(event.latlng, {
+        radius: 5,
+        color: "#f4d35e"
+      }).addTo(map)
+    );
+
+    if (draftLine) map.removeLayer(draftLine);
+
+    if (points.length >= 2) {
+      draftLine = L.polyline(points, {
+        color: "#f4d35e",
+        dashArray: "5,5"
+      }).addTo(map);
+    }
+
+    $("drawStatus").textContent =
+      points.length + " ponto(s) marcado(s).";
+  });
+
+  function safeText(value) {
+    return String(value || "").replace(/[&<>"']/g, c => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;",
+      '"': "&quot;", "'": "&#39;"
+    })[c]);
+  }
+
+  function renderAreas() {
+    Object.values(areaLayers).forEach(layer => map.removeLayer(layer));
+    areaLayers = {};
+
+    areas.forEach(area => {
+      if (!area.points || area.points.length < 3) return;
+
+      const polygon = L.polygon(area.points, {
+        color: "#79b85c",
+        fillColor: "#79b85c",
+        fillOpacity: 0.2
+      }).addTo(map);
+
+      polygon.bindPopup(safeText(area.name));
+      areaLayers[area.id] = polygon;
+    });
+
+    const list = $("areaList");
+    list.replaceChildren();
+
+    if (!areas.length) {
+      list.textContent = "Nenhuma área cadastrada.";
+      updateAreaInfo();
+      return;
+    }
+
+    areas.forEach(area => {
+      const item = document.createElement("div");
+      item.className = "area-item";
+
+      const name = document.createElement("strong");
+      name.textContent = area.name;
+      item.appendChild(name);
+
+      const details = document.createElement("p");
+      details.className = "small";
+      details.textContent =
+        "Delegacia: " + (area.station || "Não cadastrada") +
+        " | Hospital: " + (area.hospital || "Não cadastrado");
+      item.appendChild(details);
+
+      const view = document.createElement("button");
+      view.textContent = "Ver no mapa";
+      view.addEventListener("click", () => {
+        if (areaLayers[area.id]) {
+          map.fitBounds(areaLayers[area.id].getBounds());
+          areaLayers[area.id].openPopup();
+        }
+      });
+      item.appendChild(view);
+
+      const remove = document.createElement("button");
+      remove.className = "danger";
+      remove.textContent = "Excluir área";
+      remove.addEventListener("click", () => {
+        if (!confirm("Excluir " + area.name + "?")) return;
+        areas = areas.filter(a => a.id !== area.id);
+        if (previousAreaId === area.id) previousAreaId = null;
+        saveAreas();
+        renderAreas();
+      });
+      item.appendChild(remove);
+
+      list.appendChild(item);
+    });
+
+    updateAreaInfo();
+  }
+
+  $("finishBtn").addEventListener("click", () => {
+    const name = $("areaName").value.trim();
+
+    if (!name) {
+      alert("Digite o nome da área.");
+      return;
+    }
+
+    if (points.length < 3) {
+      alert("Marque pelo menos três pontos no mapa.");
+      return;
+    }
+
+    const area = {
+      id: String(Date.now()) + Math.random().toString(16).slice(2),
+      name,
+      station: $("station").value.trim(),
+      hospital: $("hospital").value.trim(),
+      points: points.map(p => [...p])
+    };
+
+    areas.push(area);
+
+    if (!saveAreas()) {
+      areas = areas.filter(a => a.id !== area.id);
+      return;
+    }
+
+    clearDraft();
+    setDrawing(false);
+
+    $("areaName").value = "";
+    $("station").value = "";
+    $("hospital").value = "";
+
+    renderAreas();
+    $("drawStatus").textContent = "Área salva com sucesso.";
+  });
+
+  $("cancelBtn").addEventListener("click", () => {
+    clearDraft();
+    setDrawing(false);
+  });
+
+  $("locateBtn").addEventListener("click", locate);
+  $("startBtn").addEventListener("click", startTracking);
+  $("stopBtn").addEventListener("click", stopTracking);
+
+  $("notifyBtn").addEventListener("click", async () => {
+    if (!("Notification" in window)) {
+      alert(
+        "Este navegador não oferece notificações web neste contexto. " +
+        "O aplicativo ainda pode usar alertas na página."
+      );
+      return;
+    }
+
+    try {
+      const permission = await Notification.requestPermission();
+
+      if (permission === "granted") {
+        alert("Permissão de notificação concedida.");
+      } else {
+        alert("Permissão não concedida. Confira os ajustes do navegador.");
+      }
+    } catch (e) {
+      alert(
+        "Não foi possível ativar notificações neste contexto. " +
+        "No iPhone, notificações web podem exigir adicionar o site à Tela de Início."
+      );
+    }
+  });
+
+  $("exportBtn").addEventListener("click", () => {
+    const blob = new Blob(
+      [JSON.stringify(areas, null, 2)],
+      { type: "application/json" }
+    );
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "patrulhamento-tatico-areas.json";
+    a.click();
+
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+
+  $("importBtn").addEventListener("click", () => {
+    $("importFile").click();
+  });
+
+  $("importFile").addEventListener("change", event => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+
+        const valid = Array.isArray(data) && data.every(a =>
+          a &&
+          typeof a.name === "string" &&
+          Array.isArray(a.points) &&
+          a.points.length >= 3 &&
+          a.points.every(p =>
+            Array.isArray(p) &&
+            p.length === 2 &&
+            Number.isFinite(p[0]) &&
+            Number.isFinite(p[1]) &&
+            Math.abs(p[0]) <= 90 &&
+            Math.abs(p[1]) <= 180
+          )
+        );
+
+        if (!valid) throw new Error("Arquivo inválido");
+
+        if (!confirm("Substituir as áreas cadastradas?")) return;
+
+        const oldAreas = areas;
+        areas = data.map(a => ({
+          ...a,
+          id: String(Date.now()) + Math.random().toString(16).slice(2)
+        }));
+
+        if (!saveAreas()) {
+          areas = oldAreas;
+          return;
+        }
+
+        previousAreaId = undefined;
+        renderAreas();
+        alert("Áreas importadas.");
+      } catch (e) {
+        alert("Arquivo inválido. Importe uma cópia JSON válida.");
+      } finally {
+        event.target.value = "";
+      }
+    };
+
+    reader.readAsText(file);
+  });
+
+  renderAreas();
+
+  // Corrige dimensões do mapa após a primeira renderização.
+  setTimeout(() => map.invalidateSize(), 300);
+})();
+</script>
+</body>
+</html>
