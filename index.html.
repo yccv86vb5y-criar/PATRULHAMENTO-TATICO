@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="theme-color" content="#101b2b"><title>PATRULHAMENTO TÁTICO</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoakEGo2s3gKy0=" crossorigin="">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
 <style>
 *{box-sizing:border-box}body{margin:0;background:#101b2b;color:#f5f7fb;font:15px system-ui,Arial,sans-serif}header{padding:14px 18px;background:#17263a}h1{font-size:20px;margin:0}small{color:#b9c9db}.layout{display:grid;grid-template-columns:320px 1fr;min-height:calc(100dvh - 68px)}aside{padding:18px;background:#142236;overflow:auto}button,.upload{display:block;width:100%;padding:11px;margin:9px 0;border:0;border-radius:7px;background:#2d74b8;color:white;font:inherit;cursor:pointer;text-align:center}button.secondary,.upload{background:#344b66}button:disabled{opacity:.5;cursor:not-allowed}input[type=file]{width:100%;margin:8px 0}#map{height:calc(100dvh - 68px);min-height:400px;background:#d7e1e8}.info{padding:12px;background:#20344e;border-radius:8px;margin:14px 0;line-height:1.6;overflow-wrap:anywhere}.status{font-size:13px;color:#c8d8e8}a{color:#9cd1ff}@media(max-width:700px){.layout{display:flex;flex-direction:column}#map{height:58dvh;min-height:350px}aside{order:2}}
 </style>
@@ -15,7 +15,7 @@
 <div class="info"><strong>Área atual</strong><div id="area">Aguardando localização...</div><hr><strong>Delegacia responsável</strong><div id="station">Não informada</div><hr><strong>Hospital mais próximo</strong><div id="hospital">Consulte após obter localização.</div><button id="hospitalBtn" class="secondary" disabled>Buscar hospital próximo</button></div>
 <button id="notify" class="secondary">🔔 Habilitar notificações</button><p id="status" class="status" role="status" aria-live="polite">Pronto. Importe o arquivo de áreas e permita a localização.</p><small>O monitoramento funciona enquanto a página estiver ativa. Dados de hospitais são consultados no OpenStreetMap e devem ser confirmados antes de uso operacional.</small>
 </aside><main id="map" aria-label="Mapa interativo"></main></div>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 <script>
 'use strict';
 const $=id=>document.getElementById(id),status=msg=>{$('status').textContent=msg};
